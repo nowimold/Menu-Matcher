@@ -6,7 +6,17 @@ type Screen =
   | 'joinCodeEntry'
   | 'generated'
   | 'hostPreferences'
+  | 'menuCompleted'
 type MenuEntryRole = 'host' | 'participant'
+type MenuInputs = {
+  preferred: string[]
+  disliked: string[]
+}
+
+const createEmptyMenuInputs = (): MenuInputs => ({
+  preferred: ['', '', ''],
+  disliked: ['', '', ''],
+})
 
 function App() {
   const readInviteCodeFromPath = () => {
@@ -36,8 +46,12 @@ function App() {
   const [joinCode, setJoinCode] = useState('')
   const [joinErrorMessage, setJoinErrorMessage] = useState('')
   const [menuEntryRole, setMenuEntryRole] = useState<MenuEntryRole>('host')
-  const [preferredMenus, setPreferredMenus] = useState(['', '', ''])
-  const [dislikedMenus, setDislikedMenus] = useState(['', '', ''])
+  const [hostMenuInputs, setHostMenuInputs] = useState<MenuInputs>(() =>
+    createEmptyMenuInputs(),
+  )
+  const [participantMenuInputs, setParticipantMenuInputs] = useState<MenuInputs>(() =>
+    createEmptyMenuInputs(),
+  )
 
   const memberOptions = [2, 3, 4, 5, 6, 7, 8, 9, 10]
   const cardClassName =
@@ -61,6 +75,8 @@ function App() {
     setGeneratedLink(inviteLink)
     setFeedbackMessage('')
     setJoinErrorMessage('')
+    setHostMenuInputs(createEmptyMenuInputs())
+    setParticipantMenuInputs(createEmptyMenuInputs())
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('menu-matcher-invite-code', generatedCode)
@@ -126,39 +142,122 @@ function App() {
   }
 
   const updatePreferredMenu = (index: number, value: string) => {
-    const next = [...preferredMenus]
-    next[index] = value
-    setPreferredMenus(next)
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => {
+        const next = [...prev.preferred]
+        next[index] = value
+        return { ...prev, preferred: next }
+      })
+      return
+    }
+
+    setParticipantMenuInputs((prev) => {
+      const next = [...prev.preferred]
+      next[index] = value
+      return { ...prev, preferred: next }
+    })
   }
 
   const updateDislikedMenu = (index: number, value: string) => {
-    const next = [...dislikedMenus]
-    next[index] = value
-    setDislikedMenus(next)
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => {
+        const next = [...prev.disliked]
+        next[index] = value
+        return { ...prev, disliked: next }
+      })
+      return
+    }
+
+    setParticipantMenuInputs((prev) => {
+      const next = [...prev.disliked]
+      next[index] = value
+      return { ...prev, disliked: next }
+    })
   }
 
   const addPreferredMenu = () => {
-    setPreferredMenus((prev) => [...prev, ''])
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => ({ ...prev, preferred: [...prev.preferred, ''] }))
+      return
+    }
+
+    setParticipantMenuInputs((prev) => ({
+      ...prev,
+      preferred: [...prev.preferred, ''],
+    }))
   }
 
   const removePreferredMenu = () => {
-    if (preferredMenus.length <= 1) {
+    const targetMenus =
+      menuEntryRole === 'host' ? hostMenuInputs.preferred : participantMenuInputs.preferred
+    if (targetMenus.length <= 1) {
       return
     }
 
-    setPreferredMenus((prev) => prev.slice(0, -1))
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => ({ ...prev, preferred: prev.preferred.slice(0, -1) }))
+      return
+    }
+
+    setParticipantMenuInputs((prev) => ({
+      ...prev,
+      preferred: prev.preferred.slice(0, -1),
+    }))
   }
 
   const addDislikedMenu = () => {
-    setDislikedMenus((prev) => [...prev, ''])
-  }
-
-  const removeDislikedMenu = () => {
-    if (dislikedMenus.length <= 1) {
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => ({ ...prev, disliked: [...prev.disliked, ''] }))
       return
     }
 
-    setDislikedMenus((prev) => prev.slice(0, -1))
+    setParticipantMenuInputs((prev) => ({
+      ...prev,
+      disliked: [...prev.disliked, ''],
+    }))
+  }
+
+  const removeDislikedMenu = () => {
+    const targetMenus =
+      menuEntryRole === 'host' ? hostMenuInputs.disliked : participantMenuInputs.disliked
+    if (targetMenus.length <= 1) {
+      return
+    }
+
+    if (menuEntryRole === 'host') {
+      setHostMenuInputs((prev) => ({ ...prev, disliked: prev.disliked.slice(0, -1) }))
+      return
+    }
+
+    setParticipantMenuInputs((prev) => ({
+      ...prev,
+      disliked: prev.disliked.slice(0, -1),
+    }))
+  }
+
+  const activeMenuInputs = menuEntryRole === 'host' ? hostMenuInputs : participantMenuInputs
+  const preferredMenus = activeMenuInputs.preferred
+  const dislikedMenus = activeMenuInputs.disliked
+
+  const hasFilledAllMenus = (inputs: MenuInputs) =>
+    [...inputs.preferred, ...inputs.disliked].every((menu) => menu.trim() !== '')
+
+  const isHostCompleted = hasFilledAllMenus(hostMenuInputs)
+  const isParticipantCompleted = hasFilledAllMenus(participantMenuInputs)
+  const canMoveToNextInMenuEntry =
+    menuEntryRole === 'host' ? isHostCompleted : isHostCompleted && isParticipantCompleted
+
+  const handleMenuNext = () => {
+    if (!canMoveToNextInMenuEntry) {
+      return
+    }
+
+    if (menuEntryRole === 'host') {
+      setMenuEntryRole('participant')
+      return
+    }
+
+    setScreen('menuCompleted')
   }
 
   return (
@@ -406,7 +505,7 @@ function App() {
               {menuEntryRole === 'host' ? '호스트 메뉴 선택' : '참여자 메뉴 선택'}
             </p>
             <p className="mt-2 text-sm text-slate-500">
-              선호하는 메뉴와 싫어하는 메뉴를 입력해주세요.
+              선호 메뉴와 싫어 메뉴의 모든 칸을 입력하면 다음으로 넘어갈 수 있어요.
             </p>
 
             <div className="mt-6 space-y-5">
@@ -490,9 +589,38 @@ function App() {
             <button
               type="button"
               onClick={() => setScreen('generated')}
-              className="mt-6 w-full rounded-2xl border border-slate-300 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:scale-[0.99] active:scale-[0.97] hover:border-slate-400"
+              className="mt-6 w-full rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-semibold text-slate-400 transition hover:scale-[0.99] active:scale-[0.97] hover:border-slate-300 hover:text-slate-600"
             >
               이전
+            </button>
+
+            <button
+              type="button"
+              onClick={handleMenuNext}
+              disabled={!canMoveToNextInMenuEntry}
+              className={`mt-3 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                canMoveToNextInMenuEntry
+                  ? 'border-slate-300 bg-white/85 text-slate-700 hover:scale-[0.99] active:scale-[0.97] hover:border-slate-400'
+                  : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+              }`}
+            >
+              다음
+            </button>
+          </section>
+        ) : null}
+
+        {screen === 'menuCompleted' ? (
+          <section className="w-full rounded-3xl border border-slate-200 bg-white/85 p-6 shadow-xl shadow-slate-300/25 backdrop-blur-[20px] sm:p-8">
+            <p className="text-2xl font-bold tracking-tight">음식 입력 완료</p>
+            <p className="mt-2 text-sm text-slate-500">
+              호스트와 참여자 모두 음식 입력을 마쳤어요.
+            </p>
+            <button
+              type="button"
+              onClick={() => setScreen('home')}
+              className="mt-4 w-full rounded-2xl border border-slate-300 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:scale-[0.99] active:scale-[0.97] hover:border-slate-400"
+            >
+              처음으로
             </button>
           </section>
         ) : null}
